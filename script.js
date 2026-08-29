@@ -109,11 +109,27 @@ function renderItems() {
 }
 
 function resizeCanvas() {
-  const rect = els.canvas.getBoundingClientRect();
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  els.canvas.width = Math.round(rect.width * dpr);
-  els.canvas.height = Math.round(rect.height * dpr);
+  const stage = document.querySelector(".wheel-stage");
+
+  if (!stage) return;
+
+  const size = Math.floor(
+    Math.min(stage.clientWidth, stage.clientHeight)
+  );
+
+  const dpr = Math.max(
+    1,
+    Math.min(2, window.devicePixelRatio || 1)
+  );
+
+  els.canvas.style.width = `${size}px`;
+  els.canvas.style.height = `${size}px`;
+
+  els.canvas.width = Math.round(size * dpr);
+  els.canvas.height = Math.round(size * dpr);
+
   els.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
   drawWheel();
 }
 
