@@ -4,570 +4,445 @@ const DEFAULT_ITEMS = [
   "Imitar a un animal",
   "Contar un chiste",
   "Hablar sin mover las manos",
-  "Bailar 30 segundos"
+  "Bailar 30 segundos",
 ];
 
-const STORAGE_KEY = "rozti-roulette-items-v2";
+const COLORS = [
+  "#2d61cf",
+  "#0b1221",
+  "#3d82f6",
+  "#0b1221",
+  "#21489c",
+  "#0b1221",
+  "#347af0",
+  "#0b1221",
+];
 
-const state = {
-  items: loadItems(),
-  rotation: 0,
-  spinning: false,
-  idleSpeed: 7,
-  spinDuration: 5,
-  soundEnabled: true,
-  audio: null,
-  humGain: null,
-  humOsc: null,
-  lastCrossedIndex: null,
-  winnerIndex: null,
-  winnerPulse: 0,
-  lastTickAudioTime: -Infinity,
-  pointerAnimation: null
-};
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const spinButton = document.getElementById("spinButton");
+const centerButton = document.getElementById("centerButton");
+const resultText = document.getElementById("resultText");
+const itemsElement = document.getElementById("items");
+const countElement = document.getElementById("count");
+const itemInput = document.getElementById("itemInput");
+const addButton = document.getElementById("addButton");
+const clearButton = document.getElementById("clearButton");
+const resetButton = document.getElementById("resetButton");
 
-const els = {
-  canvas: document.getElementById("wheelCanvas"),
-  ctx: document.getElementById("wheelCanvas").getContext("2d"),
-  pointer: document.getElementById("pointer"),
-  spinButton: document.getElementById("spinButton"),
-  itemsList: document.getElementById("itemsList"),
-  countLabel: document.getElementById("countLabel"),
-  statusPill: document.getElementById("statusPill"),
-  addForm: document.getElementById("addForm"),
-  itemInput: document.getElementById("itemInput"),
-  clearButton: document.getElementById("clearButton"),
-  resetButton: document.getElementById("resetButton"),
-  idleSpeed: document.getElementById("idleSpeed"),
-  spinDuration: document.getElementById("spinDuration"),
-  soundEnabled: document.getElementById("soundEnabled"),
-  resultModal: document.getElementById("resultModal"),
-  resultText: document.getElementById("resultText"),
-  againButton: document.getElementById("againButton")
-};
+const resultModal = document.getElementById("resultModal");
+const modalResult = document.getElementById("modalResult");
+const closeModalButton = document.getElementById("closeModal");
+const modalOkButton = document.getElementById("modalOk");
+
+let items = loadItems();
+let rotation = 0;
+let spinning = false;
+let animationFrame = null;
+let idleLastTime = null;
+let spinAudio = null;
+let audioReady = false;
+let lastTickSlice = -1;
+
+// Velocidad de giro lento permanente (radianes por segundo).
+const IDLE_SPEED = 0.20;
 
 function loadItems() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) && saved.length ? saved : [...DEFAULT_ITEMS];
+    const saved = localStorage.getItem("rozii-wheel-items");
+    const parsed = saved ? JSON.parse(saved) : null;
+    return Array.isArray(parsed) && parsed.length ? parsed : [...DEFAULT_ITEMS];
   } catch {
     return [...DEFAULT_ITEMS];
   }
 }
 
 function saveItems() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
-}
-
-function setStatus(text) {
-  els.statusPill.textContent = text;
-}
-
-function sectorColor(index) {
-  const palette = ["#347cf3", "#0e1730", "#24458d", "#07101f", "#2d74e5", "#0a1323"];
-  return palette[index % palette.length];
+  localStorage.setItem("rozii-wheel-items", JSON.stringify(items));
 }
 
 function renderItems() {
-  els.itemsList.innerHTML = "";
-  els.countLabel.textContent = `(${state.items.length})`;
+  countElement.textContent = items.length;
+  itemsElement.innerHTML = "";
 
-  state.items.forEach((item, index) => {
+  if (!items.length) {
+    itemsElement.innerHTML = '<div class="empty">No hay retos. Agrega uno arriba.</div>';
+    return;
+  }
+
+  items.forEach((text, index) => {
     const row = document.createElement("div");
-    row.className = "item-row";
+    row.className = "item";
+
+    const label = document.createElement("div");
+    label.className = "item-label";
 
     const dot = document.createElement("span");
     dot.className = "item-dot";
-    dot.style.background = sectorColor(index);
+    dot.style.background = COLORS[index % COLORS.length];
 
-    const text = document.createElement("span");
-    text.className = "item-text";
-    text.textContent = item;
+    const span = document.createElement("span");
+    span.className = "item-text";
+    span.textContent = text;
 
-    const remove = document.createElement("button");
-    remove.className = "item-delete";
-    remove.type = "button";
-    remove.title = "Eliminar";
-    remove.textContent = "×";
-    remove.addEventListener("click", () => {
-      if (state.spinning) return;
-      state.items.splice(index, 1);
-      state.winnerIndex = null;
-      saveItems();
-      renderItems();
-      drawWheel();
-    });
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "delete-item";
+    deleteButton.type = "button";
+    deleteButton.textContent = "×";
+    deleteButton.title = "Eliminar";
+    deleteButton.addEventListener("click", () => removeItem(index));
 
-    row.append(dot, text, remove);
-    els.itemsList.appendChild(row);
+    label.append(dot, span);
+    row.append(label, deleteButton);
+    itemsElement.appendChild(row);
   });
-
-  els.spinButton.disabled = state.items.length < 2;
-  if (state.items.length < 2 && !state.spinning) {
-    setStatus("Agrega al menos 2 elementos");
-  } else if (!state.spinning) {
-    setStatus("Lista para girar");
-  }
 }
 
-function resizeCanvas() {
-  const rect = els.canvas.getBoundingClientRect();
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  els.canvas.width = Math.round(rect.width * dpr);
-  els.canvas.height = Math.round(rect.height * dpr);
-  els.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+function removeItem(index) {
+  if (spinning) return;
+  items.splice(index, 1);
+  saveItems();
+  resultText.textContent = "";
   drawWheel();
+  renderItems();
+}
+
+function addItem() {
+  if (spinning) return;
+
+  const value = itemInput.value.trim();
+  if (!value) {
+    itemInput.focus();
+    return;
+  }
+
+  items.push(value);
+  itemInput.value = "";
+  saveItems();
+  resultText.textContent = "";
+  drawWheel();
+  renderItems();
+  itemInput.focus();
 }
 
 function drawWheel() {
-  const ctx = els.ctx;
-  const rect = els.canvas.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
-  const cx = width / 2;
-  const cy = height / 2;
-  const radius = Math.min(width, height) / 2 - 13;
+  const size = canvas.width;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.455;
+  const count = Math.max(items.length, 1);
+  const slice = (Math.PI * 2) / count;
 
-  ctx.clearRect(0, 0, width, height);
-
-  ctx.save();
-  ctx.shadowColor = "rgba(52,124,243,.28)";
-  ctx.shadowBlur = state.spinning ? 30 : 16;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
-  ctx.fillStyle = "#08101e";
-  ctx.fill();
-  ctx.restore();
+  ctx.clearRect(0, 0, size, size);
 
   ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.fillStyle = "#11213a";
+  ctx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
+  ctx.fillStyle = "#050b18";
   ctx.fill();
 
-  if (!state.items.length) return;
-
-  const slice = (Math.PI * 2) / state.items.length;
-  const startOffset = -Math.PI / 2 - slice / 2;
-
-  for (let i = 0; i < state.items.length; i++) {
-    const start = startOffset + i * slice;
-    const end = start + slice;
-    const isWinner = state.winnerIndex === i;
-    const pulse = isWinner ? 0.5 + Math.sin(state.winnerPulse) * 0.18 : 0;
-
-    ctx.save();
-
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, radius - 2, start, end);
-    ctx.closePath();
-
-    ctx.fillStyle = sectorColor(i);
-    ctx.fill();
-
-    if (isWinner) {
-      ctx.shadowColor = `rgba(255,224,94,${0.6 + pulse * 0.2})`;
-      ctx.shadowBlur = 22 + pulse * 18;
-      ctx.lineWidth = 5 + pulse * 4;
-      ctx.strokeStyle = `rgba(255,238,137,${0.88 + pulse * 0.1})`;
-      ctx.stroke();
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = `rgba(255,224,94,${0.12 + pulse * 0.08})`;
-      ctx.fill();
-    }
-
-    ctx.lineWidth = isWinner ? 3 : 2;
-    ctx.strokeStyle = isWinner
-      ? "rgba(255,245,174,.96)"
-      : "rgba(145,180,230,.62)";
-    ctx.stroke();
-
-    ctx.restore();
-
-    drawLabel(ctx, state.items[i], start + slice / 2, slice, cx, cy, radius);
-  }
-
-  ctx.save();
   ctx.beginPath();
-  ctx.arc(cx, cy, radius - 5, 0, Math.PI * 2);
-  ctx.lineWidth = state.spinning ? 5 : 3;
-  ctx.strokeStyle = state.spinning
-    ? "rgba(68,139,255,.85)"
-    : "rgba(54,126,243,.58)";
-  ctx.shadowColor = "rgba(63,134,255,.58)";
-  ctx.shadowBlur = state.spinning ? 24 : 12;
+  ctx.arc(cx, cy, radius + 6, 0, Math.PI * 2);
+  ctx.strokeStyle = "#315da8";
+  ctx.lineWidth = 4;
   ctx.stroke();
-  ctx.restore();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius * 0.145, 0, Math.PI * 2);
-  ctx.fillStyle = "#091426";
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "#1b83ff";
-  ctx.stroke();
-}
-
-function drawLabel(ctx, text, angle, slice, cx, cy, radius) {
-  const fontSize = Math.max(12, Math.min(19, radius * 0.048));
-  const maxWidth = radius * 0.78;
-  let label = text;
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(angle);
+  ctx.rotate(rotation - Math.PI / 2);
 
-  if (Math.cos(angle) < 0) ctx.rotate(Math.PI);
+  for (let i = 0; i < count; i++) {
+    const start = i * slice;
+    const end = start + slice;
 
-  ctx.font = `800 ${fontSize}px Inter, system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#f6f8ff";
-  ctx.shadowColor = "rgba(0,0,0,.38)";
-  ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radius, start, end);
+    ctx.closePath();
 
-  if (ctx.measureText(label).width > maxWidth) {
-    let trimmed = label;
-    while (trimmed.length > 4 && ctx.measureText(`${trimmed}…`).width > maxWidth) {
-      trimmed = trimmed.slice(0, -1);
+    const color = COLORS[i % COLORS.length];
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(195, 218, 255, 0.34)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (items.length) {
+      drawLabel(items[i], start + slice / 2, radius);
     }
-    label = `${trimmed}…`;
   }
 
-  ctx.fillText(label, radius * 0.62, 0);
   ctx.restore();
 }
 
-function applyRotation() {
-  els.canvas.style.transform = `rotate(${state.rotation}deg)`;
-}
+function drawLabel(text, angle, radius) {
+  ctx.save();
+  ctx.rotate(angle);
 
-function setWheelGlow(active) {
-  els.canvas.parentElement.classList.toggle("glow", active);
-}
+  const maxWidth = radius * 0.58;
+  let fontSize = Math.max(17, Math.min(25, radius * 0.08));
+  ctx.font = `700 ${fontSize}px Poppins, Arial, sans-serif`;
 
-function getCurrentRotation() {
-  const transform = getComputedStyle(els.canvas).transform;
-  if (!transform || transform === "none") return state.rotation;
+  while (ctx.measureText(text).width > maxWidth && fontSize > 11) {
+    fontSize -= 1;
+    ctx.font = `700 ${fontSize}px Poppins, Arial, sans-serif`;
+  }
 
-  const match = transform.match(/^matrix\(([^)]+)\)$/);
-  if (!match) return state.rotation;
+  ctx.fillStyle = "#f4f8ff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.38)";
+  ctx.shadowBlur = 3;
 
-  const values = match[1].split(",").map(Number);
-  if (values.length < 6 || values.some(Number.isNaN)) return state.rotation;
+  const x = radius * 0.62;
+  const available = radius * 0.72;
 
-  return Math.atan2(values[1], values[0]) * 180 / Math.PI;
-}
-
-function startIdleAnimation() {
-  if (state.spinning || state.items.length < 2) return;
-
-  els.canvas.style.setProperty("--idle-from", `${state.rotation}deg`);
-  els.canvas.style.setProperty("--idle-duration", `${360 / Math.max(0.1, state.idleSpeed)}s`);
-  els.canvas.classList.add("idle-spin");
-}
-
-function stopIdleAnimation() {
-  els.canvas.classList.remove("idle-spin");
-}
-
-function pointerTick() {
-  if (typeof els.pointer.animate === "function") {
-    state.pointerAnimation?.cancel();
-    state.pointerAnimation = els.pointer.animate(
-      [
-        { transform: "translateX(-50%) rotate(0deg)" },
-        { transform: "translateX(-50%) rotate(8deg) translateY(7px)" },
-        { transform: "translateX(-50%) rotate(-4deg) translateY(2px)" },
-        { transform: "translateX(-50%) rotate(0deg) translateY(0)" }
-      ],
-      { duration: 75, easing: "ease-out" }
-    );
+  if (ctx.measureText(text).width <= available) {
+    ctx.fillText(text, x, 0, available);
   } else {
-    els.pointer.classList.remove("tick");
-    requestAnimationFrame(() => els.pointer.classList.add("tick"));
-  }
-}
+    const words = text.split(/\s+/);
+    let line1 = "";
+    let line2 = "";
 
-function winnerHighlightAnimation() {
-  const started = performance.now();
-
-  function animate(now) {
-    state.winnerPulse = (now - started) / 110;
-    drawWheel();
-
-    if (now - started < 1900 && state.winnerIndex !== null) {
-      requestAnimationFrame(animate);
-    } else {
-      state.winnerPulse = 0;
-      drawWheel();
-    }
-  }
-
-  requestAnimationFrame(animate);
-}
-
-
-function mod(n, m) {
-  return ((n % m) + m) % m;
-}
-
-async function spin() {
-  if (state.spinning || state.items.length < 2) return;
-
-  state.spinning = true;
-  state.rotation = getCurrentRotation();
-  stopIdleAnimation();
-  applyRotation();
-  state.winnerIndex = null;
-  state.winnerPulse = 0;
-  state.lastCrossedIndex = null;
-  els.spinButton.disabled = true;
-  setWheelGlow(true);
-  drawWheel();
-  setStatus("Girando…");
-
-  await ensureAudio();
-  startSpinSound();
-
-  const count = state.items.length;
-  const sliceDeg = 360 / count;
-  const winner = Math.floor(Math.random() * count);
-
-  const desiredModulo = mod(-winner * sliceDeg, 360);
-  const currentModulo = mod(state.rotation, 360);
-  let delta = desiredModulo - currentModulo;
-  if (delta < 0) delta += 360;
-
-  const extraTurns = 5 + Math.floor(Math.random() * 3);
-  const startRotation = state.rotation;
-  const targetRotation = startRotation + extraTurns * 360 + delta;
-  const totalDelta = targetRotation - startRotation;
-  const duration = Number(els.spinDuration.value) * 1000;
-  const startTime = performance.now();
-
-  return new Promise(resolve => {
-    function animate(now) {
-      const progress = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - progress, 4);
-
-      state.rotation = startRotation + totalDelta * eased;
-      applyRotation();
-
-      const normalized = mod(-state.rotation, 360);
-      const currentIndex = Math.floor(normalized / sliceDeg);
-
-      if (currentIndex !== state.lastCrossedIndex) {
-        state.lastCrossedIndex = currentIndex;
-        pointerTick();
-        tickSound(0.038 + progress * 0.025);
-      }
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
+    for (const word of words) {
+      const candidate = line1 ? `${line1} ${word}` : word;
+      if (ctx.measureText(candidate).width <= available) {
+        line1 = candidate;
       } else {
-        state.rotation = targetRotation;
-        applyRotation();
-        stopSpinSound();
-
-        state.spinning = false;
-        state.winnerIndex = winner;
-        state.winnerPulse = 0;
-        setWheelGlow(true);
-        drawWheel();
-
-        els.spinButton.disabled = state.items.length < 2;
-        setStatus(`Resultado: ${state.items[winner]}`);
-
-        resultSound();
-        winnerHighlightAnimation();
-        showResult(state.items[winner]);
-        startIdleAnimation();
-
-        resolve();
+        line2 = line2 ? `${line2} ${word}` : word;
       }
     }
 
-    requestAnimationFrame(animate);
-  });
+    if (line2) {
+      ctx.fillText(line1, x, -fontSize * 0.62, available);
+      ctx.fillText(line2, x, fontSize * 0.62, available);
+    } else {
+      ctx.fillText(text, x, 0, available);
+    }
+  }
+
+  ctx.restore();
 }
 
-function showResult(text) {
-  els.resultText.textContent = text;
-  els.resultText.classList.remove("winner-pop");
-  void els.resultText.offsetWidth;
-  els.resultText.classList.add("winner-pop");
-  els.resultModal.classList.add("open");
-  els.resultModal.setAttribute("aria-hidden", "false");
-}
-
-function closeResult() {
-  els.resultModal.classList.remove("open");
-  els.resultModal.setAttribute("aria-hidden", "true");
-}
-
-async function ensureAudio() {
-  if (!state.soundEnabled) return;
+// -------- Sonido generado por Web Audio (no necesitas subir archivos .mp3) --------
+function initAudio() {
+  if (audioReady) return;
 
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return;
 
-  if (!state.audio) state.audio = new AudioCtx();
-  if (state.audio.state === "suspended") await state.audio.resume();
+  spinAudio = new AudioCtx();
+  if (spinAudio.state === "suspended") {
+    spinAudio.resume().catch(() => {});
+  }
+  audioReady = true;
 }
 
-function startSpinSound() {
-  if (!state.soundEnabled || !state.audio) return;
-  const ctx = state.audio;
-  stopSpinSound();
+function playTone({ frequency = 440, duration = 0.08, volume = 0.05, type = "sine", slideTo = null }) {
+  if (!spinAudio) return;
 
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
+  const now = spinAudio.currentTime;
+  const osc = spinAudio.createOscillator();
+  const gain = spinAudio.createGain();
 
-  osc.type = "sawtooth";
-  osc.frequency.value = 62;
-  gain.gain.value = 0.025;
+  osc.type = type;
+  osc.frequency.setValueAtTime(frequency, now);
+  if (slideTo) {
+    osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+  }
+
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(volume, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
   osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-
-  state.humOsc = osc;
-  state.humGain = gain;
+  gain.connect(spinAudio.destination);
+  osc.start(now);
+  osc.stop(now + duration + 0.01);
 }
 
-function stopSpinSound() {
-  if (!state.humOsc || !state.audio) return;
-  const now = state.audio.currentTime;
-
-  try {
-    state.humGain.gain.cancelScheduledValues(now);
-    state.humGain.gain.setValueAtTime(state.humGain.gain.value, now);
-    state.humGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-    state.humOsc.stop(now + 0.13);
-  } catch {}
-
-  state.humOsc = null;
-  state.humGain = null;
+function playSpinStartSound() {
+  playTone({ frequency: 180, duration: 0.15, volume: 0.08, type: "sawtooth", slideTo: 420 });
 }
 
-function tickSound(volume = 0.055) {
-  if (!state.soundEnabled || !state.audio) return;
-  const ctx = state.audio;
-  const t = ctx.currentTime;
-  if (t - state.lastTickAudioTime < 0.028) return;
-  state.lastTickAudioTime = t;
-
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = "square";
-  osc.frequency.setValueAtTime(1200, t);
-  osc.frequency.exponentialRampToValueAtTime(420, t + 0.035);
-
-  gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(volume, t + 0.004);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(t);
-  osc.stop(t + 0.045);
+function playWheelTick() {
+  playTone({ frequency: 760, duration: 0.035, volume: 0.028, type: "square", slideTo: 560 });
 }
 
-function resultSound() {
-  if (!state.soundEnabled || !state.audio) return;
-  const ctx = state.audio;
-  const start = ctx.currentTime;
+function playResultSound() {
+  if (!spinAudio) return;
+  playTone({ frequency: 523.25, duration: 0.11, volume: 0.065, type: "sine" });
+  setTimeout(() => playTone({ frequency: 659.25, duration: 0.11, volume: 0.065, type: "sine" }), 85);
+  setTimeout(() => playTone({ frequency: 783.99, duration: 0.20, volume: 0.08, type: "sine" }), 170);
+}
 
-  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const t = start + i * 0.11;
+// -------- Giro lento permanente --------
+function idleLoop(now) {
+  if (idleLastTime === null) idleLastTime = now;
+  const dt = Math.min((now - idleLastTime) / 1000, 0.05);
+  idleLastTime = now;
 
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+  if (!spinning && !resultModal.classList.contains("open") && items.length > 0) {
+    rotation += IDLE_SPEED * dt;
+    drawWheel();
+  }
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.26);
+  animationFrame = requestAnimationFrame(idleLoop);
+}
+
+// Calcula o índice que está sob a flecha no topo.
+function getPointerIndex() {
+  if (!items.length) return -1;
+  const slice = (Math.PI * 2) / items.length;
+
+  // Cada setor comienza en 0 y la ruleta se dibuja con rotation - PI/2.
+  // El ángulo del puntero en coordenadas del sector es -rotation.
+  const relative = ((-rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  return Math.floor(relative / slice) % items.length;
+}
+
+function spin() {
+  if (spinning || items.length < 1) return;
+
+  initAudio();
+  if (spinAudio?.state === "suspended") {
+    spinAudio.resume().catch(() => {});
+  }
+
+  spinning = true;
+  closeResultModal();
+  setControlsDisabled(true);
+  resultText.textContent = "";
+  playSpinStartSound();
+
+  const count = items.length;
+  const slice = (Math.PI * 2) / count;
+  const winnerIndex = Math.floor(Math.random() * count);
+
+  // Queremos el centro del segmento ganador exactamente bajo la flecha.
+  const winnerCenter = winnerIndex * slice + slice / 2;
+  const desiredBase = -winnerCenter;
+
+  const current = rotation;
+  const twoPi = Math.PI * 2;
+  let target = desiredBase;
+  while (target <= current) target += twoPi;
+
+  // Entre 6 y 8 vueltas completas antes de detenerse.
+  target += (6 + Math.floor(Math.random() * 3)) * twoPi;
+
+  const startRotation = rotation;
+  const delta = target - startRotation;
+  const duration = 4600;
+  const startTime = performance.now();
+  let previousVisualRotation = startRotation;
+
+  function easeOutQuint(t) {
+    return 1 - Math.pow(1 - t, 5);
+  }
+
+  function animate(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = easeOutQuint(progress);
+
+    rotation = startRotation + delta * eased;
+
+    // Tick de audio basado en el cruce de cada división de la ruleta.
+    const previousIndexAngle = Math.floor((((previousVisualRotation % twoPi) + twoPi) % twoPi) / slice);
+    const currentIndexAngle = Math.floor((((rotation % twoPi) + twoPi) % twoPi) / slice);
+    if (currentIndexAngle !== previousIndexAngle) {
+      playWheelTick();
+      lastTickSlice = currentIndexAngle;
+    }
+    previousVisualRotation = rotation;
+
+    drawWheel();
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      spinning = false;
+      rotation = target;
+      drawWheel();
+
+      resultText.textContent = `🎉 Resultado: ${items[winnerIndex]}`;
+      openResultModal(items[winnerIndex]);
+      playResultSound();
+      setControlsDisabled(false);
+    }
+  }
+
+  animationFrame = requestAnimationFrame(animate);
+}
+
+function setControlsDisabled(disabled) {
+  spinButton.disabled = disabled || items.length === 0;
+  centerButton.disabled = disabled || items.length === 0;
+  addButton.disabled = disabled;
+  itemInput.disabled = disabled;
+  clearButton.disabled = disabled;
+  resetButton.disabled = disabled;
+
+  document.querySelectorAll(".delete-item").forEach((button) => {
+    button.disabled = disabled;
   });
 }
 
-els.addForm.addEventListener("submit", event => {
-  event.preventDefault();
-  const text = els.itemInput.value.trim();
-  if (!text || state.spinning) return;
+function openResultModal(result) {
+  modalResult.textContent = result;
+  resultModal.classList.add("open");
+  resultModal.setAttribute("aria-hidden", "false");
+  modalOkButton.focus();
+}
 
-  state.items.push(text);
-  state.winnerIndex = null;
-  els.itemInput.value = "";
+function closeResultModal() {
+  resultModal.classList.remove("open");
+  resultModal.setAttribute("aria-hidden", "true");
+}
+
+addButton.addEventListener("click", addItem);
+
+itemInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") addItem();
+});
+
+spinButton.addEventListener("click", spin);
+centerButton.addEventListener("click", spin);
+
+clearButton.addEventListener("click", () => {
+  if (spinning) return;
+  items = [];
   saveItems();
-  renderItems();
+  resultText.textContent = "";
+  closeResultModal();
   drawWheel();
-  els.itemInput.focus();
+  renderItems();
 });
 
-els.clearButton.addEventListener("click", () => {
-  if (state.spinning) return;
-  state.items = [];
-  state.winnerIndex = null;
+resetButton.addEventListener("click", () => {
+  if (spinning) return;
+  items = [...DEFAULT_ITEMS];
+  rotation = 0;
   saveItems();
-  renderItems();
+  resultText.textContent = "";
+  closeResultModal();
   drawWheel();
-});
-
-els.resetButton.addEventListener("click", () => {
-  if (state.spinning) return;
-  state.items = [...DEFAULT_ITEMS];
-  state.winnerIndex = null;
-  saveItems();
   renderItems();
-  drawWheel();
 });
 
-els.idleSpeed.addEventListener("input", e => {
-  state.idleSpeed = Number(e.target.value);
-  if (!state.spinning) {
-    state.rotation = getCurrentRotation();
-    stopIdleAnimation();
-    startIdleAnimation();
-  }
-});
-els.spinDuration.addEventListener("input", e => state.spinDuration = Number(e.target.value));
-
-els.soundEnabled.addEventListener("change", async e => {
-  state.soundEnabled = e.target.checked;
-  if (state.soundEnabled) await ensureAudio();
-  else stopSpinSound();
+closeModalButton.addEventListener("click", closeResultModal);
+modalOkButton.addEventListener("click", closeResultModal);
+resultModal.addEventListener("click", (event) => {
+  if (event.target.hasAttribute("data-close-modal")) closeResultModal();
 });
 
-els.spinButton.addEventListener("click", spin);
-els.againButton.addEventListener("click", () => {
-  closeResult();
-  spin();
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeResultModal();
 });
 
-document.querySelectorAll("[data-close-modal]").forEach(node => {
-  node.addEventListener("click", closeResult);
-});
+window.addEventListener("resize", drawWheel);
 
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape") closeResult();
-  if (e.code === "Space" &&
-      document.activeElement.tagName !== "INPUT" &&
-      !state.spinning) {
-    e.preventDefault();
-    spin();
-  }
-});
-
-window.addEventListener("resize", resizeCanvas);
+// Iniciar dibujo y giro lento permanente.
+drawWheel();
 renderItems();
-resizeCanvas();
-startIdleAnimation();
+animationFrame = requestAnimationFrame(idleLoop);
