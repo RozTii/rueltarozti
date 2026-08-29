@@ -1,52 +1,28 @@
-# Ruleta RozTii
+# Ruleta RozTi
 
-Ruleta interactiva estilo oscuro/azul, preparada para GitHub Pages.
+Versión actualizada con:
 
-## Incluye
+- giro lento continuo en reposo
+- giro principal con desaceleración
+- sonido de giro + clicks por casilla + sonido final
+- puntero con vibración sincronizada con los clicks
+- halo/brillo de la ruleta durante el giro
+- casilla ganadora iluminada y pulsante
+- ventana de resultado
+- lista editable y guardada en localStorage
+- logo en el centro
 
-- Giro lento permanente cuando la ruleta está en reposo.
-- Giro principal con aceleración/desaceleración.
-- Resultado elegido al detenerse, siempre alineado con la flecha.
-- Ventana (modal) grande para mostrar el reto elegido.
-- Sonido generado con Web Audio API: sonido de inicio, ticks durante el giro y sonido de resultado.
-- Agregar, eliminar, limpiar y restaurar retos.
-- Guardado automático de los retos en `localStorage`.
-- Diseño responsive para PC y móvil.
+## Logo
 
-## Cambiar el logo del centro
+Coloca tu imagen dentro de `assets/` y cambia en `index.html`:
 
-El logo del centro se carga desde:
+`src="assets/logo.svg"`
 
-```text
-assets/avatar.png
-```
+por el nombre de tu archivo, por ejemplo:
 
-Reemplaza ese archivo por tu logo manteniendo el nombre `avatar.png`.
-
-No necesitas modificar el código.
-
-## Ejecutar
-
-Abre `index.html` en un navegador moderno. No requiere Node.js.
-
-También puedes usar:
-
-```bash
-python -m http.server 8000
-```
-
-y abrir `http://localhost:8000`.
+`src="assets/mi-logo.png"`
 
 ## GitHub Pages
 
-Sube estos archivos al repositorio:
-
-```text
-index.html
-style.css
-script.js
-README.md
-assets/avatar.png
-```
-
-Después entra a **Settings → Pages → Deploy from a branch → main → /(root)** y guarda.
+Sube `index.html`, `styles.css`, `script.js` y la carpeta `assets/` a tu repositorio.
+Después: Settings -> Pages -> Deploy from a branch -> main -> /(root).
