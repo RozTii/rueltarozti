@@ -34,6 +34,7 @@ const retosPanel = document.getElementById("retosPanel");
 const closeRetosButton = document.getElementById("closeRetos");
 const panelBackdrop = document.getElementById("panelBackdrop");
 
+
 const resultModal = document.getElementById("resultModal");
 const modalResult = document.getElementById("modalResult");
 const closeModalButton = document.getElementById("closeModal");
@@ -104,7 +105,6 @@ function renderItems() {
 
 function removeItem(index) {
   if (spinning) return;
-
   items.splice(index, 1);
   saveItems();
   resultText.textContent = "";
@@ -116,7 +116,6 @@ function addItem() {
   if (spinning) return;
 
   const value = itemInput.value.trim();
-
   if (!value) {
     itemInput.focus();
     return;
@@ -212,7 +211,6 @@ function drawLabel(text, angle, radius) {
 
     for (const word of words) {
       const candidate = line1 ? `${line1} ${word}` : word;
-
       if (ctx.measureText(candidate).width <= available) {
         line1 = candidate;
       } else {
@@ -231,7 +229,7 @@ function drawLabel(text, angle, radius) {
   ctx.restore();
 }
 
-// -------- Sonido generado por Web Audio --------
+// -------- Sonido generado por Web Audio (no necesitas subir archivos .mp3) --------
 function initAudio() {
   if (audioReady) return;
 
@@ -239,21 +237,13 @@ function initAudio() {
   if (!AudioCtx) return;
 
   spinAudio = new AudioCtx();
-
   if (spinAudio.state === "suspended") {
     spinAudio.resume().catch(() => {});
   }
-
   audioReady = true;
 }
 
-function playTone({
-  frequency = 440,
-  duration = 0.08,
-  volume = 0.05,
-  type = "sine",
-  slideTo = null
-}) {
+function playTone({ frequency = 440, duration = 0.08, volume = 0.05, type = "sine", slideTo = null }) {
   if (!spinAudio) return;
 
   const now = spinAudio.currentTime;
@@ -262,7 +252,6 @@ function playTone({
 
   osc.type = type;
   osc.frequency.setValueAtTime(frequency, now);
-
   if (slideTo) {
     osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
   }
@@ -273,60 +262,28 @@ function playTone({
 
   osc.connect(gain);
   gain.connect(spinAudio.destination);
-
   osc.start(now);
   osc.stop(now + duration + 0.01);
 }
 
 function playSpinStartSound() {
-  playTone({
-    frequency: 180,
-    duration: 0.15,
-    volume: 0.08,
-    type: "sawtooth",
-    slideTo: 420
-  });
+  playTone({ frequency: 180, duration: 0.15, volume: 0.08, type: "sawtooth", slideTo: 420 });
 }
 
 function playWheelTick() {
-  playTone({
-    frequency: 760,
-    duration: 0.035,
-    volume: 0.028,
-    type: "square",
-    slideTo: 560
-  });
+  playTone({ frequency: 760, duration: 0.035, volume: 0.028, type: "square", slideTo: 560 });
 }
 
 function playResultSound() {
   if (!spinAudio) return;
-
-  playTone({
-    frequency: 523.25,
-    duration: 0.11,
-    volume: 0.065,
-    type: "sine"
-  });
-
-  setTimeout(() => playTone({
-    frequency: 659.25,
-    duration: 0.11,
-    volume: 0.065,
-    type: "sine"
-  }), 85);
-
-  setTimeout(() => playTone({
-    frequency: 783.99,
-    duration: 0.20,
-    volume: 0.08,
-    type: "sine"
-  }), 170);
+  playTone({ frequency: 523.25, duration: 0.11, volume: 0.065, type: "sine" });
+  setTimeout(() => playTone({ frequency: 659.25, duration: 0.11, volume: 0.065, type: "sine" }), 85);
+  setTimeout(() => playTone({ frequency: 783.99, duration: 0.20, volume: 0.08, type: "sine" }), 170);
 }
 
 // -------- Giro lento permanente --------
 function idleLoop(now) {
   if (idleLastTime === null) idleLastTime = now;
-
   const dt = Math.min((now - idleLastTime) / 1000, 0.05);
   idleLastTime = now;
 
@@ -338,49 +295,47 @@ function idleLoop(now) {
   animationFrame = requestAnimationFrame(idleLoop);
 }
 
-// Calcula el índice que está bajo la flecha en el tope.
+// Calcula o índice que está sob a flecha no topo.
 function getPointerIndex() {
   if (!items.length) return -1;
-
   const slice = (Math.PI * 2) / items.length;
-  const relative = ((-rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
+  // Cada setor comienza en 0 y la ruleta se dibuja con rotation - PI/2.
+  // El ángulo del puntero en coordenadas del sector es -rotation.
+  const relative = ((-rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   return Math.floor(relative / slice) % items.length;
 }
 
-// -------- Menú RETOS --------
 function openRetosPanel() {
   if (spinning) return;
 
   retosPanel.classList.add("open");
   panelBackdrop.classList.add("show");
-
   retosPanel.setAttribute("aria-hidden", "false");
   retosButton.setAttribute("aria-expanded", "true");
-
-  setTimeout(() => itemInput.focus(), 250);
 }
 
 function closeRetosPanel() {
   retosPanel.classList.remove("open");
   panelBackdrop.classList.remove("show");
-
   retosPanel.setAttribute("aria-hidden", "true");
   retosButton.setAttribute("aria-expanded", "false");
 }
+
+retosButton.addEventListener("click", openRetosPanel);
+closeRetosButton.addEventListener("click", closeRetosPanel);
+panelBackdrop.addEventListener("click", closeRetosPanel);
 
 function spin() {
   if (spinning || items.length < 1) return;
 
   initAudio();
-
   if (spinAudio?.state === "suspended") {
     spinAudio.resume().catch(() => {});
   }
 
-  closeRetosPanel();
-
   spinning = true;
+  closeRetosPanel();
   closeResultModal();
   setControlsDisabled(true);
   resultText.textContent = "";
@@ -397,10 +352,7 @@ function spin() {
   const current = rotation;
   const twoPi = Math.PI * 2;
   let target = desiredBase;
-
-  while (target <= current) {
-    target += twoPi;
-  }
+  while (target <= current) target += twoPi;
 
   // Entre 6 y 8 vueltas completas antes de detenerse.
   target += (6 + Math.floor(Math.random() * 3)) * twoPi;
@@ -421,21 +373,15 @@ function spin() {
 
     rotation = startRotation + delta * eased;
 
-    // Tick de audio basado en el cruce de cada división.
-    const previousIndexAngle = Math.floor(
-      (((previousVisualRotation % twoPi) + twoPi) % twoPi) / slice
-    );
-
-    const currentIndexAngle = Math.floor(
-      (((rotation % twoPi) + twoPi) % twoPi) / slice
-    );
-
+    // Tick de audio basado en el cruce de cada división de la ruleta.
+    const previousIndexAngle = Math.floor((((previousVisualRotation % twoPi) + twoPi) % twoPi) / slice);
+    const currentIndexAngle = Math.floor((((rotation % twoPi) + twoPi) % twoPi) / slice);
     if (currentIndexAngle !== previousIndexAngle) {
       playWheelTick();
       lastTickSlice = currentIndexAngle;
     }
-
     previousVisualRotation = rotation;
+
     drawWheel();
 
     if (progress < 1) {
@@ -461,7 +407,6 @@ function setControlsDisabled(disabled) {
   addButton.disabled = disabled;
   itemInput.disabled = disabled;
   clearButton.disabled = disabled;
-  retosButton.disabled = disabled;
 
   document.querySelectorAll(".delete-item").forEach((button) => {
     button.disabled = disabled;
@@ -489,13 +434,8 @@ itemInput.addEventListener("keydown", (event) => {
 spinButton.addEventListener("click", spin);
 centerButton.addEventListener("click", spin);
 
-retosButton.addEventListener("click", openRetosPanel);
-closeRetosButton.addEventListener("click", closeRetosPanel);
-panelBackdrop.addEventListener("click", closeRetosPanel);
-
 clearButton.addEventListener("click", () => {
   if (spinning) return;
-
   items = [];
   saveItems();
   resultText.textContent = "";
@@ -504,13 +444,11 @@ clearButton.addEventListener("click", () => {
   renderItems();
 });
 
+
 closeModalButton.addEventListener("click", closeResultModal);
 modalOkButton.addEventListener("click", closeResultModal);
-
 resultModal.addEventListener("click", (event) => {
-  if (event.target.hasAttribute("data-close-modal")) {
-    closeResultModal();
-  }
+  if (event.target.hasAttribute("data-close-modal")) closeResultModal();
 });
 
 document.addEventListener("keydown", (event) => {
