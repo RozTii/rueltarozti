@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ruleta RozTi</title>
+  <title>Ruleta RozTii</title>
   <meta name="description" content="Ruleta de retos interactiva">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +13,7 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <h1>Ruleta RozTi</h1>
+      <h1>Ruleta RozTii</h1>
     </header>
 
     <section class="layout">
@@ -23,7 +23,7 @@
           <canvas id="wheel" width="700" height="700"></canvas>
           <button id="centerButton" class="center-button" aria-label="Girar la ruleta">
             <!-- Cambia assets/avatar.png por tu propio logo -->
-            <img id="logo" src="assets/logo.png" alt="logo">
+            <img id="avatar" src="assets/avatar.png" alt="Logo">
           </button>
         </div>
 
@@ -42,22 +42,19 @@
 
         <div class="add-row">
           <input id="itemInput" type="text" maxlength="80"
-                 placeholder="Escribir..."
+                 placeholder="Escribe un reto o texto..."
                  autocomplete="off">
           <button id="addButton" class="icon-button" aria-label="Agregar reto">+</button>
         </div>
 
+        <div id="items" class="items"></div>
+
         <div class="actions">
-
-  <button id="clearButton" class="secondary-button">
-    Limpiar
-  </button>
-
-  <button id="resetButton" class="secondary-button">
-    <span>⤨</span> Reset
-  </button>
-
-</div>
+          <button id="clearButton" class="secondary-button">Limpiar</button>
+          <button id="resetButton" class="secondary-button">
+            <span>⤨</span> Reset
+          </button>
+        </div>
       </aside>
     </section>
   </main>
@@ -67,7 +64,7 @@
     <div class="modal-backdrop" data-close-modal></div>
     <div class="modal-card">
       <button id="closeModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
-      <div class="modal-kicker"> </div>
+      <div class="modal-kicker">🎉 ¡RETO ELEGIDO!</div>
       <h2 id="resultTitle">Tu resultado</h2>
       <div id="modalResult" class="modal-result"></div>
       <button id="modalOk" class="modal-ok" type="button">¡Entendido!</button>
