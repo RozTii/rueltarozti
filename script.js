@@ -545,6 +545,7 @@ document.addEventListener("keydown", e => {
 });
 
 window.addEventListener("resize", resizeCanvas);
+
 renderItems();
 resizeCanvas();
 requestAnimationFrame(idleLoop);
