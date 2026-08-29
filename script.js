@@ -1,10 +1,10 @@
 const DEFAULT_ITEMS = [
-  "Cantar una canción",
-  "10 sentadillas",
-  "Imitar a un animal",
-  "Contar un chiste",
-  "Hablar sin mover las manos",
-  "Bailar 30 segundos",
+  "NADA",
+  "APAGO STREAM",
+  "BAN A ALGUIEN",
+  "CAMBIO TITULO",
+  "ELIGE MI SKIN",
+  "GIRA DE VUELTA",
 ];
 
 const COLORS = [
